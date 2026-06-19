@@ -19,7 +19,6 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { httpsCallable } from "firebase/functions";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -29,7 +28,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { functions } from "./lib/firebase";
+import { extractLabResults } from "./lib/gemini";
 import {
   DEFAULT_MAPPING_RULES,
   LAB_FIELDS,
@@ -210,16 +209,9 @@ function App() {
     setIsAnalyzing(true);
     setError(null);
     try {
-      const extract = httpsCallable<
-        { imageDataUrl: string; fileName: string },
-        ExtractionResponse
-      >(functions, "extractLabResults", { timeout: 120_000 });
-      const response = await extract({
-        imageDataUrl: sourceImage.dataUrl,
-        fileName: sourceImage.file.name,
-      });
-      setExtraction(response.data);
-      setRows(rowsWithIds(response.data));
+      const response = await extractLabResults(sourceImage.dataUrl, sourceImage.file.name);
+      setExtraction(response);
+      setRows(rowsWithIds(response));
       setVerified(false);
     } catch (analysisError) {
       const message =
@@ -340,7 +332,7 @@ function App() {
         </div>
         <div className="status-pill">
           <span className="status-pill__dot" />
-          Firebase połączony
+          Gemini 3.5 Flash
         </div>
       </header>
 

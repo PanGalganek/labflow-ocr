@@ -1,8 +1,8 @@
 {
-  "functions": {
-    "source": "functions",
-    "runtime": "nodejs22",
-    "predeploy": ["npm --prefix functions run build"]
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
   },
   "hosting": {
     "public": "dist",
@@ -10,7 +10,6 @@
     "rewrites": [{ "source": "**", "destination": "/index.html" }]
   },
   "emulators": {
-    "functions": { "port": 5001 },
     "hosting": { "port": 5000 },
     "ui": { "enabled": true }
   }

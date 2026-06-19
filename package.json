@@ -6,13 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:functions": "npm --prefix functions run build",
-    "build:all": "npm run build && npm run build:functions",
+    "build:all": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "emulators": "firebase emulators:start",
-    "deploy": "npm run build:all && firebase deploy"
+    "emulators": "firebase emulators:start --only hosting",
+    "deploy": "npm run build && firebase deploy --only hosting"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

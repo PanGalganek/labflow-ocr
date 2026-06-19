@@ -1,5 +1,6 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
+import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
   projectId: "labflow-ocr-pangalganek-2026",
@@ -10,14 +11,9 @@ const firebaseConfig = {
   messagingSenderId: "468081478502",
 };
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-export const functions = getFunctions(app, "europe-central2");
-
-if (
-  import.meta.env.DEV &&
-  import.meta.env.VITE_USE_FIREBASE_EMULATOR === "true" &&
-  !(globalThis as typeof globalThis & { __labflowEmulator?: boolean }).__labflowEmulator
-) {
-  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
-  (globalThis as typeof globalThis & { __labflowEmulator?: boolean }).__labflowEmulator = true;
-}
+export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+export const appCheck = initializeAppCheck(app, {
+  provider: new ReCaptchaEnterpriseProvider("6LeceigtAAAAAL2wlnmxpp9eta62TC5G5dqfzc3i"),
+  isTokenAutoRefreshEnabled: true,
+});
+export const auth = getAuth(app);

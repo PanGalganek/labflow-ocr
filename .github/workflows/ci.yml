@@ -21,18 +21,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            functions/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install web dependencies
         run: npm ci
 
-      - name: Install function dependencies
-        run: npm ci --prefix functions
-
       - name: Run tests
         run: npm test
 
-      - name: Build web and functions
-        run: npm run build:all
+      - name: Build application
+        run: npm run build

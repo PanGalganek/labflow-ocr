@@ -1,6 +1,0 @@
-lib/
-node_modules/
-.secret.local
-.env
-.env.*
-firebase-debug.log
