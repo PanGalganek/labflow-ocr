@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .firebase/
+.codex-remote-attachments/
 .env
 .env.*
 !.env.example

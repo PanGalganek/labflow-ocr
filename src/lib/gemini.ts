@@ -3,6 +3,7 @@ import {
   getGenerativeModel,
   GoogleAIBackend,
   Schema,
+  ThinkingLevel,
 } from "firebase/ai";
 import type { ExtractionResponse, ExtractedRow, ResultFlag } from "../types";
 import { app } from "./firebase";
@@ -25,7 +26,8 @@ const extractionSchema = Schema.object({
       description: "Problemy z jakością odczytu lub układem dokumentu.",
     }),
     rows: Schema.array({
-      maxItems: 500,
+      // Gemini 3.5 Flash odrzuca maxItems=500 jako nieprawidłowy argument.
+      // Limit jest egzekwowany po stronie aplikacji w normalizeResponse.
       items: Schema.object({
         properties: {
           sampleId: Schema.string({ nullable: true }),
@@ -70,6 +72,7 @@ Zasady:
 - jeśli fragment jest nieczytelny, nie zgaduj: ustaw wartość null, niską pewność i dodaj uwagę;
 - sourceText powinien zawierać krótki dosłowny fragment uzasadniający wiersz;
 - confidence oceniaj konserwatywnie w skali 0–1;
+- jeśli zdjęcie jest obrócone, odczytaj dokument po uwzględnieniu właściwej orientacji;
 - warnings dotyczą wyłącznie jakości odczytu, brakujących kolumn lub niejednoznacznego układu.
 `,
     generationConfig: {
@@ -77,6 +80,7 @@ Zasady:
       responseSchema: extractionSchema,
       temperature: 0.1,
       maxOutputTokens: 8192,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
     },
   },
   { timeout: 120_000 },
@@ -142,12 +146,27 @@ export async function extractLabResults(
   }
 
   const [, mimeType, data] = match;
-  const result = await model.generateContent([
-    {
-      text: `Przepisz wszystkie dane laboratoryjne z pliku ${fileName}. Zwróć każdy pomiar jako osobny wiersz.`,
-    },
-    { inlineData: { data, mimeType } },
-  ]);
+  let result;
+  try {
+    result = await model.generateContent([
+      {
+        text: `Przepisz wszystkie dane laboratoryjne z pliku ${fileName}. Zwróć każdy pomiar jako osobny wiersz.`,
+      },
+      { inlineData: { data, mimeType } },
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("[429") || /quota|rate limit/i.test(message)) {
+      throw new Error("Wyczerpano chwilowy limit Gemini. Spróbuj ponownie za kilka minut.");
+    }
+    if (message.includes("[401") || /unauthenticated|missing required authentication/i.test(message)) {
+      throw new Error("Sesja wygasła. Wyloguj się i zaloguj ponownie.");
+    }
+    if (message.includes("[400") || /invalid argument/i.test(message)) {
+      throw new Error("Gemini nie przyjął obrazu do analizy. Spróbuj użyć wyraźniejszego pliku JPEG lub PNG.");
+    }
+    throw new Error("Nie udało się połączyć z Gemini. Spróbuj ponownie.");
+  }
 
   const responseText = result.response.text();
   if (!responseText) {
