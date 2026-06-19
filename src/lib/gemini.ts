@@ -5,6 +5,7 @@ import {
   GoogleAIBackend,
   Schema,
   ThinkingLevel,
+  type Part,
 } from "firebase/ai";
 import type { ExtractionResponse, ExtractedRow, ResultFlag } from "../types";
 import { app } from "./firebase";
@@ -81,7 +82,7 @@ Zasady:
 - zachowaj identyfikator próbki, datę, nazwę parametru, wartość, jednostkę i zakres referencyjny;
 - nie zmieniaj przecinka dziesiętnego ani znaków <, >, ~, +, -, ND i podobnych;
 - jeśli fragment jest nieczytelny, nie zgaduj: ustaw wartość null, niską pewność i dodaj uwagę;
-- sourceText powinien zawierać krótki dosłowny fragment uzasadniający wiersz;
+- sourceText dodaj tylko wtedy, gdy pomaga wyjaśnić niską pewność odczytu;
 - confidence oceniaj konserwatywnie w skali 0–1;
 - jeśli zdjęcie jest obrócone, odczytaj dokument po uwzględnieniu właściwej orientacji;
 - warnings dotyczą wyłącznie jakości odczytu, brakujących kolumn lub niejednoznacznego układu.
@@ -94,7 +95,7 @@ Zasady:
       thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
     },
   },
-  { timeout: 120_000 },
+  { timeout: 240_000 },
 );
 
 const FLAGS = new Set<ResultFlag>(["normal", "low", "high", "critical", "unknown"]);
@@ -157,44 +158,58 @@ export async function extractLabResults(
   }
 
   const [, mimeType, data] = match;
-  let result;
-  try {
-    result = await model.generateContent([
-      {
-        text: `Przepisz wszystkie dane laboratoryjne z pliku ${fileName}. Zwróć każdy pomiar jako osobny wiersz.`,
-      },
-      { inlineData: { data, mimeType } },
-    ]);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("[429") || /quota|rate limit/i.test(message)) {
-      throw new Error("Wyczerpano chwilowy limit Gemini. Spróbuj ponownie za kilka minut.");
+  const request: Part[] = [
+    {
+      text: `Przepisz wszystkie dane laboratoryjne z pliku ${fileName}. Zwróć każdy pomiar jako osobny wiersz i pomijaj zbędne puste pola.`,
+    },
+    { inlineData: { data, mimeType } },
+  ];
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const result = await model.generateContentStream(request);
+      let responseText = "";
+      let finishReason: string | undefined;
+
+      for await (const chunk of result.stream) {
+        responseText += chunk.text();
+        finishReason = chunk.candidates?.[0]?.finishReason ?? finishReason;
+      }
+
+      if (finishReason === FinishReason.MAX_TOKENS) {
+        throw new Error("Dokument zawiera zbyt dużo danych na jeden odczyt. Podziel zdjęcie na dwie części.");
+      }
+      if (!responseText) {
+        throw new Error("Gemini nie zwrócił danych do zapisania.");
+      }
+
+      return normalizeResponse(JSON.parse(responseText));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const interruptedTransfer = error instanceof SyntaxError || /unexpected end|network|stream|aborted/i.test(message);
+
+      if (attempt === 0 && interruptedTransfer) {
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        continue;
+      }
+      if (message.startsWith("Dokument zawiera") || message.startsWith("Gemini nie zwrócił")) {
+        throw error;
+      }
+      if (message.includes("[429") || /quota|rate limit/i.test(message)) {
+        throw new Error("Wyczerpano chwilowy limit Gemini. Spróbuj ponownie za kilka minut.");
+      }
+      if (message.includes("[401") || /unauthenticated|missing required authentication/i.test(message)) {
+        throw new Error("Sesja wygasła. Wyloguj się i zaloguj ponownie.");
+      }
+      if (message.includes("[400") || /invalid argument/i.test(message)) {
+        throw new Error("Gemini nie przyjął obrazu do analizy. Spróbuj użyć wyraźniejszego pliku JPEG lub PNG.");
+      }
+      if (interruptedTransfer) {
+        throw new Error("Połączenie przerwało odbieranie wyników. Spróbuj ponownie lub podziel zdjęcie na dwie części.");
+      }
+      throw new Error("Nie udało się połączyć z Gemini. Spróbuj ponownie.");
     }
-    if (message.includes("[401") || /unauthenticated|missing required authentication/i.test(message)) {
-      throw new Error("Sesja wygasła. Wyloguj się i zaloguj ponownie.");
-    }
-    if (message.includes("[400") || /invalid argument/i.test(message)) {
-      throw new Error("Gemini nie przyjął obrazu do analizy. Spróbuj użyć wyraźniejszego pliku JPEG lub PNG.");
-    }
-    throw new Error("Nie udało się połączyć z Gemini. Spróbuj ponownie.");
   }
 
-  const finishReason = result.response.candidates?.[0]?.finishReason;
-  if (finishReason === FinishReason.MAX_TOKENS) {
-    throw new Error("Dokument zawiera zbyt dużo danych na jeden odczyt. Podziel zdjęcie na dwie części.");
-  }
-
-  const responseText = result.response.text();
-  if (!responseText) {
-    throw new Error("Gemini nie zwrócił danych do zapisania.");
-  }
-
-  try {
-    return normalizeResponse(JSON.parse(responseText));
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error("Gemini zwrócił niepełne dane. Spróbuj ponownie odczytać zdjęcie.");
-    }
-    throw error;
-  }
+  throw new Error("Nie udało się zakończyć odczytu obrazu.");
 }
