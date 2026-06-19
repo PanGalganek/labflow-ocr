@@ -1,0 +1,38 @@
+name: Quality checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install function dependencies
+        run: npm ci --prefix functions
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build web and functions
+        run: npm run build:all
