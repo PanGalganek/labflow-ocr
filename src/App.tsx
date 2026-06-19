@@ -129,6 +129,14 @@ function lowConfidenceMessage(count: number): string {
   return `${count} wyników ma obniżoną pewność. `;
 }
 
+function analysisErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message.replace(/^Firebase:\s*/i, "") : "";
+  if (/unexpected end of json|unterminated string in json|json.*position/i.test(message)) {
+    return "Odpowiedź Gemini została przerwana. Uruchom odczyt ponownie; aplikacja ponowi transfer automatycznie.";
+  }
+  return message || "Nie udało się przeanalizować obrazu.";
+}
+
 function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const templateRef = useRef<HTMLInputElement>(null);
@@ -214,11 +222,7 @@ function App() {
       setRows(rowsWithIds(response));
       setVerified(false);
     } catch (analysisError) {
-      const message =
-        analysisError instanceof Error && analysisError.message
-          ? analysisError.message.replace(/^Firebase:\s*/i, "")
-          : "Nie udało się przeanalizować obrazu.";
-      setError(message);
+      setError(analysisErrorMessage(analysisError));
     } finally {
       setIsAnalyzing(false);
     }
