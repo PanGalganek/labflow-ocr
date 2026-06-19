@@ -1,4 +1,5 @@
 import {
+  FinishReason,
   getAI,
   getGenerativeModel,
   GoogleAIBackend,
@@ -46,9 +47,19 @@ const extractionSchema = Schema.object({
           confidence: Schema.number({ minimum: 0, maximum: 1 }),
           sourceText: Schema.string({ nullable: true }),
         },
+        optionalProperties: [
+          "sampleId",
+          "testDate",
+          "value",
+          "unit",
+          "referenceRange",
+          "notes",
+          "sourceText",
+        ],
       }),
     }),
   },
+  optionalProperties: ["sourceDevice"],
 });
 
 const ai = getAI(app, {
@@ -79,7 +90,7 @@ Zasady:
       responseMimeType: "application/json",
       responseSchema: extractionSchema,
       temperature: 0.1,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 65_536,
       thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
     },
   },
@@ -168,10 +179,22 @@ export async function extractLabResults(
     throw new Error("Nie udało się połączyć z Gemini. Spróbuj ponownie.");
   }
 
+  const finishReason = result.response.candidates?.[0]?.finishReason;
+  if (finishReason === FinishReason.MAX_TOKENS) {
+    throw new Error("Dokument zawiera zbyt dużo danych na jeden odczyt. Podziel zdjęcie na dwie części.");
+  }
+
   const responseText = result.response.text();
   if (!responseText) {
     throw new Error("Gemini nie zwrócił danych do zapisania.");
   }
 
-  return normalizeResponse(JSON.parse(responseText));
+  try {
+    return normalizeResponse(JSON.parse(responseText));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error("Gemini zwrócił niepełne dane. Spróbuj ponownie odczytać zdjęcie.");
+    }
+    throw error;
+  }
 }
