@@ -7,29 +7,31 @@ import { createWorkbookBuffer } from "./excel";
 const rows: LabResultRow[] = [
   {
     id: "1",
-    sampleId: "PR-001",
-    testDate: "2026-06-19",
-    parameter: "pH",
-    value: 7.21,
-    unit: null,
-    referenceRange: "6.8–7.4",
-    flag: "normal",
+    sequenceNumber: "1",
+    date: "2026-06-19",
+    blankSample: "0,000",
+    controlSampleC1: "0,103",
+    controlSampleC2: "0,342",
+    repeatedSample1: "0,347",
+    repeatedSample2: "0,352",
+    range: "0,005",
     notes: null,
     confidence: 0.98,
-    sourceText: "pH 7,21",
+    sourceText: null,
   },
   {
     id: "2",
-    sampleId: "PR-001",
-    testDate: "2026-06-19",
-    parameter: "Przewodność",
-    value: 423,
-    unit: "µS/cm",
-    referenceRange: null,
-    flag: "unknown",
+    sequenceNumber: "2",
+    date: "2026-06-20",
+    blankSample: "0,001",
+    controlSampleC1: "0,102",
+    controlSampleC2: "0,341",
+    repeatedSample1: "0,344",
+    repeatedSample2: "0,349",
+    range: "0,005",
     notes: null,
     confidence: 0.91,
-    sourceText: "COND 423 µS/cm",
+    sourceText: null,
   },
 ];
 
@@ -51,9 +53,10 @@ describe("Excel export", () => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
 
-    expect(workbook.getWorksheet("Dane surowe")?.getCell("C2").value).toBe("pH");
-    expect(workbook.getWorksheet("Do analizy")?.getCell("C2").value).toBe(7.21);
-    expect(workbook.getWorksheet("Do analizy")?.getCell("D3").value).toBe("µS/cm");
+    expect(workbook.getWorksheet("Dane surowe")?.getCell("C2").value).toBe("0,000");
+    expect(workbook.getWorksheet("Do analizy")?.getCell("A2").value).toBe("1");
+    expect(workbook.getWorksheet("Do analizy")?.getCell("F3").value).toBe("0,344");
+    expect(workbook.getWorksheet("Do analizy")?.getCell("H3").value).toBe("0,005");
     expect(workbook.getWorksheet("Metadane")?.getCell("B7").value).toBe(2);
   });
 });

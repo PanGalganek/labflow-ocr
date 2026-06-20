@@ -42,49 +42,52 @@ import {
 
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const MAPPING_STORAGE_KEY = "labflow:mapping-rules:v1";
+const MAPPING_STORAGE_KEY = "labflow:mapping-rules:v2";
 
 const DEMO_EXTRACTION: ExtractionResponse = {
-  documentType: "Wydruk z miernika laboratoryjnego",
-  sourceDevice: "Miernik wieloparametrowy",
+  documentType: "Karta powtarzalności metody",
+  sourceDevice: null,
   language: "pl",
-  warnings: ["Drugi wiersz ma lekko rozmazaną jednostkę — wymaga kontroli."],
+  warnings: ["Drugi wiersz ma lekko rozmazaną wartość — wymaga kontroli."],
   rows: [
     {
-      sampleId: "PR-2026-041",
-      testDate: "2026-06-19",
-      parameter: "pH",
-      value: 7.21,
-      unit: null,
-      referenceRange: "6.80–7.40",
-      flag: "normal",
+      sequenceNumber: "1",
+      date: "18.06.2026",
+      blankSample: "0,000",
+      controlSampleC1: "0,103",
+      controlSampleC2: "0,342",
+      repeatedSample1: "0,347",
+      repeatedSample2: "0,352",
+      range: "0,005",
       notes: null,
       confidence: 0.98,
-      sourceText: "pH 7,21",
+      sourceText: null,
     },
     {
-      sampleId: "PR-2026-041",
-      testDate: "2026-06-19",
-      parameter: "Przewodność",
-      value: 423,
-      unit: "µS/cm",
-      referenceRange: null,
-      flag: "unknown",
-      notes: "Sprawdź jednostkę na wydruku.",
+      sequenceNumber: "2",
+      date: "18.06.2026",
+      blankSample: "0,001",
+      controlSampleC1: "0,102",
+      controlSampleC2: "0,341",
+      repeatedSample1: "0,344",
+      repeatedSample2: "0,349",
+      range: "0,005",
+      notes: "Sprawdź rozmazaną wartość na zdjęciu.",
       confidence: 0.78,
-      sourceText: "COND 423 µS/cm",
+      sourceText: "wiersz 2",
     },
     {
-      sampleId: "PR-2026-041",
-      testDate: "2026-06-19",
-      parameter: "Temperatura",
-      value: 22.4,
-      unit: "°C",
-      referenceRange: null,
-      flag: "unknown",
+      sequenceNumber: "3",
+      date: "18.06.2026",
+      blankSample: "0,000",
+      controlSampleC1: "0,104",
+      controlSampleC2: "0,339",
+      repeatedSample1: "0,340",
+      repeatedSample2: "0,344",
+      range: "0,004",
       notes: null,
       confidence: 0.96,
-      sourceText: "TEMP 22,4 °C",
+      sourceText: null,
     },
   ],
 };
@@ -251,13 +254,14 @@ function App() {
       ...current,
       {
         id: makeId("row"),
-        sampleId: current.at(-1)?.sampleId ?? null,
-        testDate: current.at(-1)?.testDate ?? null,
-        parameter: "",
-        value: null,
-        unit: null,
-        referenceRange: null,
-        flag: "unknown",
+        sequenceNumber: null,
+        date: current.at(-1)?.date ?? null,
+        blankSample: null,
+        controlSampleC1: null,
+        controlSampleC2: null,
+        repeatedSample1: null,
+        repeatedSample2: null,
+        range: null,
         notes: null,
         confidence: 1,
         sourceText: null,
@@ -271,7 +275,7 @@ function App() {
       ...current,
       {
         id: makeId("mapping"),
-        sourceField: "value",
+        sourceField: "sequenceNumber",
         targetSheet: "Do analizy",
         startCell: "A1",
         direction: "down",
@@ -457,18 +461,20 @@ function App() {
 
               <div className="table-wrap">
                 <table className="results-table">
-                  <thead><tr><th>Próbka</th><th>Data</th><th>Parametr</th><th>Wartość</th><th>Jednostka</th><th>Zakres</th><th>Pewność</th><th aria-label="Akcje" /></tr></thead>
+                  <thead><tr><th>L.p</th><th>Data</th><th>Próbka ślepa</th><th>Próbka kontrolna c1</th><th>Próbka kontrolna c2</th><th>Próbka powtórzona (1)</th><th>Próbka powtórzona (2)</th><th>Rozstęp</th><th>Pewność</th><th aria-label="Akcje" /></tr></thead>
                   <tbody>
                     {rows.map((row) => (
                       <tr key={row.id} className={row.confidence < 0.85 ? "row--check" : ""}>
-                        <td><input aria-label="Identyfikator próbki" value={row.sampleId ?? ""} onChange={(event) => updateRow(row.id, "sampleId", event.target.value || null)} /></td>
-                        <td><input aria-label="Data badania" value={row.testDate ?? ""} onChange={(event) => updateRow(row.id, "testDate", event.target.value || null)} /></td>
-                        <td><input aria-label="Parametr" value={row.parameter} onChange={(event) => updateRow(row.id, "parameter", event.target.value)} /></td>
-                        <td><input aria-label="Wartość" value={row.value ?? ""} onChange={(event) => updateRow(row.id, "value", event.target.value || null)} /></td>
-                        <td><input aria-label="Jednostka" value={row.unit ?? ""} onChange={(event) => updateRow(row.id, "unit", event.target.value || null)} /></td>
-                        <td><input aria-label="Zakres referencyjny" value={row.referenceRange ?? ""} onChange={(event) => updateRow(row.id, "referenceRange", event.target.value || null)} /></td>
+                        <td><input aria-label="L.p" value={row.sequenceNumber ?? ""} onChange={(event) => updateRow(row.id, "sequenceNumber", event.target.value || null)} /></td>
+                        <td><input aria-label="Data" value={row.date ?? ""} onChange={(event) => updateRow(row.id, "date", event.target.value || null)} /></td>
+                        <td><input aria-label="Próbka ślepa" value={row.blankSample ?? ""} onChange={(event) => updateRow(row.id, "blankSample", event.target.value || null)} /></td>
+                        <td><input aria-label="Próbka kontrolna c1" value={row.controlSampleC1 ?? ""} onChange={(event) => updateRow(row.id, "controlSampleC1", event.target.value || null)} /></td>
+                        <td><input aria-label="Próbka kontrolna c2" value={row.controlSampleC2 ?? ""} onChange={(event) => updateRow(row.id, "controlSampleC2", event.target.value || null)} /></td>
+                        <td><input aria-label="Próbka powtórzona (1)" value={row.repeatedSample1 ?? ""} onChange={(event) => updateRow(row.id, "repeatedSample1", event.target.value || null)} /></td>
+                        <td><input aria-label="Próbka powtórzona (2)" value={row.repeatedSample2 ?? ""} onChange={(event) => updateRow(row.id, "repeatedSample2", event.target.value || null)} /></td>
+                        <td><input aria-label="Rozstęp" value={row.range ?? ""} onChange={(event) => updateRow(row.id, "range", event.target.value || null)} /></td>
                         <td><span className={confidenceClass(row.confidence)}>{Math.round(row.confidence * 100)}%</span></td>
-                        <td><button type="button" className="icon-button icon-button--quiet" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); setVerified(false); }} aria-label={`Usuń ${row.parameter}`}><Trash2 size={16} /></button></td>
+                        <td><button type="button" className="icon-button icon-button--quiet" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); setVerified(false); }} aria-label={`Usuń wiersz ${row.sequenceNumber ?? ""}`}><Trash2 size={16} /></button></td>
                       </tr>
                     ))}
                   </tbody>

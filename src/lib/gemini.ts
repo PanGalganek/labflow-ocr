@@ -7,7 +7,7 @@ import {
   ThinkingLevel,
   type Part,
 } from "firebase/ai";
-import type { ExtractionResponse, ExtractedRow, ResultFlag } from "../types";
+import type { ExtractionResponse, ExtractedRow } from "../types";
 import { app } from "./firebase";
 
 const DATA_URL_PATTERN = /^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/s;
@@ -32,28 +32,27 @@ const extractionSchema = Schema.object({
       // Limit jest egzekwowany po stronie aplikacji w normalizeResponse.
       items: Schema.object({
         properties: {
-          sampleId: Schema.string({ nullable: true }),
-          testDate: Schema.string({ nullable: true }),
-          parameter: Schema.string(),
-          value: Schema.string({
-            nullable: true,
-            description: "Dokładny wynik, łącznie ze znakami <, >, ~, ND itp.",
-          }),
-          unit: Schema.string({ nullable: true }),
-          referenceRange: Schema.string({ nullable: true }),
-          flag: Schema.enumString({
-            enum: ["normal", "low", "high", "critical", "unknown"],
-          }),
+          sequenceNumber: Schema.string({ nullable: true, description: "Wartość z kolumny L.p." }),
+          date: Schema.string({ nullable: true, description: "Wartość z kolumny Data." }),
+          blankSample: Schema.string({ nullable: true, description: "Wartość z kolumny Próbka ślepa." }),
+          controlSampleC1: Schema.string({ nullable: true, description: "Wartość z kolumny Próbka kontrolna c1." }),
+          controlSampleC2: Schema.string({ nullable: true, description: "Wartość z kolumny Próbka kontrolna c2." }),
+          repeatedSample1: Schema.string({ nullable: true, description: "Wartość z kolumny Próbka powtórzona (1)." }),
+          repeatedSample2: Schema.string({ nullable: true, description: "Wartość z kolumny Próbka powtórzona (2)." }),
+          range: Schema.string({ nullable: true, description: "Wartość z kolumny Rozstęp." }),
           notes: Schema.string({ nullable: true }),
           confidence: Schema.number({ minimum: 0, maximum: 1 }),
           sourceText: Schema.string({ nullable: true }),
         },
         optionalProperties: [
-          "sampleId",
-          "testDate",
-          "value",
-          "unit",
-          "referenceRange",
+          "sequenceNumber",
+          "date",
+          "blankSample",
+          "controlSampleC1",
+          "controlSampleC2",
+          "repeatedSample1",
+          "repeatedSample2",
+          "range",
           "notes",
           "sourceText",
         ],
@@ -78,8 +77,10 @@ wydruków z urządzeń i tabel. Wyłącznie wiernie przepisujesz informacje — 
 medycznie i nie uzupełniasz brakujących danych z wiedzy ogólnej.
 
 Zasady:
-- każdy pomiar zwróć jako osobny wiersz;
-- zachowaj identyfikator próbki, datę, nazwę parametru, wartość, jednostkę i zakres referencyjny;
+- każdy fizyczny wiersz tabeli źródłowej zwróć jako jeden wiersz odpowiedzi;
+- odczytuj dokładnie kolumny: L.p, Data, Próbka ślepa, Próbka kontrolna c1,
+  Próbka kontrolna c2, Próbka powtórzona (1), Próbka powtórzona (2), Rozstęp;
+- nie rozbijaj jednego wiersza tabeli na osobne pomiary;
 - nie zmieniaj przecinka dziesiętnego ani znaków <, >, ~, +, -, ND i podobnych;
 - jeśli fragment jest nieczytelny, nie zgaduj: ustaw wartość null, niską pewność i dodaj uwagę;
 - sourceText dodaj tylko wtedy, gdy pomaga wyjaśnić niską pewność odczytu;
@@ -98,8 +99,6 @@ Zasady:
   { timeout: 240_000 },
 );
 
-const FLAGS = new Set<ResultFlag>(["normal", "low", "high", "critical", "unknown"]);
-
 function nullableString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -107,21 +106,22 @@ function nullableString(value: unknown): string | null {
 function normalizeRow(value: unknown): ExtractedRow | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
-  const parameter = nullableString(row.parameter);
-  if (!parameter) return null;
+  const normalizedValues = {
+    sequenceNumber: nullableString(row.sequenceNumber),
+    date: nullableString(row.date),
+    blankSample: nullableString(row.blankSample),
+    controlSampleC1: nullableString(row.controlSampleC1),
+    controlSampleC2: nullableString(row.controlSampleC2),
+    repeatedSample1: nullableString(row.repeatedSample1),
+    repeatedSample2: nullableString(row.repeatedSample2),
+    range: nullableString(row.range),
+  };
+  if (Object.values(normalizedValues).every((item) => item === null)) return null;
 
-  const rawFlag = typeof row.flag === "string" ? row.flag : "unknown";
-  const flag = FLAGS.has(rawFlag as ResultFlag) ? (rawFlag as ResultFlag) : "unknown";
   const confidence = Number(row.confidence);
 
   return {
-    sampleId: nullableString(row.sampleId),
-    testDate: nullableString(row.testDate),
-    parameter,
-    value: nullableString(row.value),
-    unit: nullableString(row.unit),
-    referenceRange: nullableString(row.referenceRange),
-    flag,
+    ...normalizedValues,
     notes: nullableString(row.notes),
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,
     sourceText: nullableString(row.sourceText),
@@ -160,7 +160,7 @@ export async function extractLabResults(
   const [, mimeType, data] = match;
   const request: Part[] = [
     {
-      text: `Przepisz wszystkie dane laboratoryjne z pliku ${fileName}. Zwróć każdy pomiar jako osobny wiersz i pomijaj zbędne puste pola.`,
+      text: `Przepisz tabelę z pliku ${fileName}. Zachowaj jeden wiersz odpowiedzi na każdy wiersz tabeli oraz dokładnie przypisz osiem wskazanych kolumn. Pomijaj zbędne puste pola.`,
     },
     { inlineData: { data, mimeType } },
   ];
@@ -186,7 +186,9 @@ export async function extractLabResults(
       return normalizeResponse(JSON.parse(responseText));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const interruptedTransfer = error instanceof SyntaxError || /unexpected end|network|stream|aborted/i.test(message);
+      const interruptedTransfer =
+        error instanceof SyntaxError ||
+        /unexpected end|network|stream|aborted|\[503|service unavailable|temporarily unavailable/i.test(message);
 
       if (attempt === 0 && interruptedTransfer) {
         await new Promise((resolve) => setTimeout(resolve, 750));
@@ -197,6 +199,9 @@ export async function extractLabResults(
       }
       if (message.includes("[429") || /quota|rate limit/i.test(message)) {
         throw new Error("Wyczerpano chwilowy limit Gemini. Spróbuj ponownie za kilka minut.");
+      }
+      if (message.includes("[503") || /service unavailable|temporarily unavailable/i.test(message)) {
+        throw new Error("Gemini jest chwilowo przeciążony. Spróbuj ponownie za minutę.");
       }
       if (message.includes("[401") || /unauthenticated|missing required authentication/i.test(message)) {
         throw new Error("Sesja wygasła. Wyloguj się i zaloguj ponownie.");

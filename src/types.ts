@@ -1,16 +1,15 @@
-export type ResultFlag = "normal" | "low" | "high" | "critical" | "unknown";
-
 export type LabResultRow = {
   id: string;
-  sampleId: string | null;
-  testDate: string | null;
-  parameter: string;
-  value: number | string | null;
-  unit: string | null;
-  referenceRange: string | null;
-  flag: ResultFlag;
-  notes: string | null;
+  sequenceNumber: string | null;
+  date: string | null;
+  blankSample: string | null;
+  controlSampleC1: string | null;
+  controlSampleC2: string | null;
+  repeatedSample1: string | null;
+  repeatedSample2: string | null;
+  range: string | null;
   confidence: number;
+  notes: string | null;
   sourceText: string | null;
 };
 
@@ -24,7 +23,18 @@ export type ExtractionResponse = {
   rows: ExtractedRow[];
 };
 
-export type LabField = Exclude<keyof LabResultRow, "id">;
+export const LAB_FIELDS = [
+  "sequenceNumber",
+  "date",
+  "blankSample",
+  "controlSampleC1",
+  "controlSampleC2",
+  "repeatedSample1",
+  "repeatedSample2",
+  "range",
+] as const;
+
+export type LabField = (typeof LAB_FIELDS)[number];
 
 export type MappingRule = {
   id: string;
@@ -42,51 +52,21 @@ export type SourceImage = {
 };
 
 export const LAB_FIELD_LABELS: Record<LabField, string> = {
-  sampleId: "Identyfikator próbki",
-  testDate: "Data badania",
-  parameter: "Parametr",
-  value: "Wartość",
-  unit: "Jednostka",
-  referenceRange: "Zakres referencyjny",
-  flag: "Flaga",
-  notes: "Uwagi",
-  confidence: "Pewność odczytu",
-  sourceText: "Tekst źródłowy",
+  sequenceNumber: "L.p",
+  date: "Data",
+  blankSample: "Próbka ślepa",
+  controlSampleC1: "Próbka kontrolna c1",
+  controlSampleC2: "próbka kontrolna c2",
+  repeatedSample1: "próbka powtórzona (1)",
+  repeatedSample2: "próbka powtórzona (2)",
+  range: "Rozstęp",
 };
 
-export const LAB_FIELDS = Object.keys(LAB_FIELD_LABELS) as LabField[];
-
-export const DEFAULT_MAPPING_RULES: MappingRule[] = [
-  {
-    id: "default-sample",
-    sourceField: "sampleId",
-    targetSheet: "Do analizy",
-    startCell: "A1",
-    direction: "down",
-    includeHeader: true,
-  },
-  {
-    id: "default-parameter",
-    sourceField: "parameter",
-    targetSheet: "Do analizy",
-    startCell: "B1",
-    direction: "down",
-    includeHeader: true,
-  },
-  {
-    id: "default-value",
-    sourceField: "value",
-    targetSheet: "Do analizy",
-    startCell: "C1",
-    direction: "down",
-    includeHeader: true,
-  },
-  {
-    id: "default-unit",
-    sourceField: "unit",
-    targetSheet: "Do analizy",
-    startCell: "D1",
-    direction: "down",
-    includeHeader: true,
-  },
-];
+export const DEFAULT_MAPPING_RULES: MappingRule[] = LAB_FIELDS.map((sourceField, index) => ({
+  id: `default-${sourceField}`,
+  sourceField,
+  targetSheet: "Do analizy",
+  startCell: `${String.fromCharCode(65 + index)}1`,
+  direction: "down",
+  includeHeader: true,
+}));

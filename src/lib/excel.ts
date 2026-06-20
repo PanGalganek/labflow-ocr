@@ -61,13 +61,14 @@ function styleHeaderRow(row: ExcelJS.Row): void {
 function populateRawSheet(workbook: ExcelJS.Workbook, rows: LabResultRow[]): void {
   const sheet = getOrReplaceSheet(workbook, RAW_SHEET_NAME);
   sheet.columns = [
-    { header: "Identyfikator próbki", key: "sampleId", width: 22 },
-    { header: "Data badania", key: "testDate", width: 16 },
-    { header: "Parametr", key: "parameter", width: 28 },
-    { header: "Wartość", key: "value", width: 16 },
-    { header: "Jednostka", key: "unit", width: 16 },
-    { header: "Zakres referencyjny", key: "referenceRange", width: 23 },
-    { header: "Flaga", key: "flag", width: 13 },
+    { header: LAB_FIELD_LABELS.sequenceNumber, key: "sequenceNumber", width: 10 },
+    { header: LAB_FIELD_LABELS.date, key: "date", width: 16 },
+    { header: LAB_FIELD_LABELS.blankSample, key: "blankSample", width: 18 },
+    { header: LAB_FIELD_LABELS.controlSampleC1, key: "controlSampleC1", width: 23 },
+    { header: LAB_FIELD_LABELS.controlSampleC2, key: "controlSampleC2", width: 23 },
+    { header: LAB_FIELD_LABELS.repeatedSample1, key: "repeatedSample1", width: 25 },
+    { header: LAB_FIELD_LABELS.repeatedSample2, key: "repeatedSample2", width: 25 },
+    { header: LAB_FIELD_LABELS.range, key: "range", width: 16 },
     { header: "Pewność", key: "confidence", width: 14 },
     { header: "Uwagi", key: "notes", width: 34 },
     { header: "Tekst źródłowy", key: "sourceText", width: 42 },
@@ -75,13 +76,14 @@ function populateRawSheet(workbook: ExcelJS.Workbook, rows: LabResultRow[]): voi
 
   rows.forEach((row) => {
     sheet.addRow({
-      sampleId: row.sampleId ?? "",
-      testDate: row.testDate ?? "",
-      parameter: row.parameter,
-      value: row.value ?? "",
-      unit: row.unit ?? "",
-      referenceRange: row.referenceRange ?? "",
-      flag: row.flag,
+      sequenceNumber: row.sequenceNumber ?? "",
+      date: row.date ?? "",
+      blankSample: row.blankSample ?? "",
+      controlSampleC1: row.controlSampleC1 ?? "",
+      controlSampleC2: row.controlSampleC2 ?? "",
+      repeatedSample1: row.repeatedSample1 ?? "",
+      repeatedSample2: row.repeatedSample2 ?? "",
+      range: row.range ?? "",
       confidence: row.confidence,
       notes: row.notes ?? "",
       sourceText: row.sourceText ?? "",
@@ -90,7 +92,7 @@ function populateRawSheet(workbook: ExcelJS.Workbook, rows: LabResultRow[]): voi
 
   styleHeaderRow(sheet.getRow(1));
   sheet.getColumn("confidence").numFmt = "0%";
-  sheet.autoFilter = { from: "A1", to: "J1" };
+  sheet.autoFilter = { from: "A1", to: "K1" };
   sheet.eachRow((row, index) => {
     if (index > 1) {
       row.alignment = { vertical: "top", wrapText: true };
@@ -155,9 +157,6 @@ function applyMappingRule(
     const columnOffset = rule.direction === "right" ? index + offset : 0;
     const cell = sheet.getCell(origin.row + rowOffset, origin.col + columnOffset);
     cell.value = normalizeCellValue(row[rule.sourceField]);
-    if (rule.sourceField === "confidence") {
-      cell.numFmt = "0%";
-    }
   });
 }
 
