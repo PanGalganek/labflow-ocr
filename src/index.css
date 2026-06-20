@@ -137,6 +137,22 @@ kbd { border: 1px solid #cbd4d1; border-bottom-width: 2px; background: white; pa
 .section-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
 .section-heading h2 { font: 700 26px "Manrope", sans-serif; letter-spacing: -.7px; margin: 6px 0 4px; }
 .section-heading p { color: var(--muted); font-size: 13px; margin: 0; }
+.filter-panel { margin: 18px 0; padding: 16px; border: 1px solid #d9e5e1; border-radius: 15px; background: #f6faf8; }
+.filter-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.filter-panel__heading > div { display: flex; align-items: center; gap: 9px; color: var(--teal); }
+.filter-panel__heading strong, .filter-panel__heading small { display: block; }
+.filter-panel__heading strong { font-size: 13px; }
+.filter-panel__heading small { margin-top: 2px; color: var(--muted); font-size: 11px; }
+.filter-count { flex: 0 0 auto; padding: 6px 9px; border-radius: 999px; background: var(--mint); color: var(--teal); font-size: 11px; font-weight: 800; }
+.filter-grid { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; align-items: end; }
+.filter-grid label { display: grid; gap: 5px; }
+.filter-grid label > span { color: #6e807e; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.filter-grid input, .filter-grid select { min-width: 0; width: 100%; height: 40px; border: 1px solid #cadad6; border-radius: 9px; background: white; padding: 0 10px; color: var(--ink); font: 600 12px "Manrope", sans-serif; }
+.filter-grid input:focus, .filter-grid select:focus { outline: 0; border-color: #78aaa2; box-shadow: 0 0 0 3px rgba(55,126,116,.09); }
+.filter-grid .filter-checkbox { display: flex; align-items: center; gap: 8px; height: 40px; }
+.filter-grid .filter-checkbox input { width: 17px; height: 17px; accent-color: var(--teal); }
+.filter-grid .filter-checkbox span { color: var(--ink); font-size: 10px; letter-spacing: 0; text-transform: none; }
+.filter-panel > .button { margin-top: 12px; }
 .table-wrap { overflow-x: auto; border: 1px solid #dfe6e3; border-radius: 13px; }
 .results-table { width: 100%; border-collapse: collapse; min-width: 1380px; }
 .results-table th { text-align: left; color: #617473; background: #f2f6f3; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; padding: 11px 10px; border-bottom: 1px solid #dfe6e3; }
@@ -232,6 +248,10 @@ footer { width: min(1180px, calc(100% - 40px)); margin: auto; border-top: 1px so
   .capture-aside { display: flex; }
   .action-bar, .verification-card { flex-direction: column; align-items: stretch; gap: 14px; }
   .section-heading { flex-direction: column; gap: 12px; }
+  .filter-panel__heading { align-items: flex-start; }
+  .filter-grid { grid-template-columns: 1fr 1fr; }
+  .filter-grid label:nth-child(3), .filter-grid .filter-checkbox { grid-column: 1 / -1; }
+  .filter-panel > .button { width: 100%; justify-content: center; }
   .results-section, .mapping-section { padding: 19px 14px; border-radius: 17px; }
   .template-card { grid-template-columns: auto 1fr; }
   .template-card > :last-child { grid-column: 1 / -1; }

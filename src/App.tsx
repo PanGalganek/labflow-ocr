@@ -6,6 +6,7 @@ import {
   ClipboardPaste,
   Download,
   FileSpreadsheet,
+  Filter,
   ImagePlus,
   LoaderCircle,
   PencilLine,
@@ -29,6 +30,13 @@ import {
   useState,
 } from "react";
 import { extractLabResults } from "./lib/gemini";
+import {
+  DEFAULT_FILTERS,
+  filterRows,
+  VALUE_FILTER_FIELDS,
+  type ResultFilters,
+  type ValueFilterField,
+} from "./lib/filters";
 import {
   DEFAULT_MAPPING_RULES,
   LAB_FIELDS,
@@ -153,6 +161,7 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ResultFilters>({ ...DEFAULT_FILTERS });
 
   useEffect(() => {
     localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(mappings));
@@ -175,6 +184,7 @@ function App() {
       setExtraction(null);
       setRows([]);
       setVerified(false);
+      setFilters({ ...DEFAULT_FILTERS });
     } catch (fileError) {
       setError(fileError instanceof Error ? fileError.message : "Nie udało się odczytać pliku.");
     }
@@ -197,10 +207,26 @@ function App() {
     return () => window.removeEventListener("paste", handlePaste);
   }, [acceptFile]);
 
+  const filteredRows = useMemo(() => filterRows(rows, filters), [filters, rows]);
+
   const lowConfidenceCount = useMemo(
-    () => rows.filter((row) => row.confidence < 0.85).length,
-    [rows],
+    () => filteredRows.filter((row) => row.confidence < 0.85).length,
+    [filteredRows],
   );
+
+  const hasActiveFilters = Boolean(
+    filters.dateFrom || filters.dateTo || filters.valueMin || filters.valueMax || filters.hideEmpty,
+  );
+
+  const updateFilter = <K extends keyof ResultFilters>(field: K, value: ResultFilters[K]) => {
+    setFilters((current) => ({ ...current, [field]: value }));
+    setVerified(false);
+  };
+
+  const clearFilters = () => {
+    setFilters({ ...DEFAULT_FILTERS });
+    setVerified(false);
+  };
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -224,6 +250,7 @@ function App() {
       setExtraction(response);
       setRows(rowsWithIds(response));
       setVerified(false);
+      setFilters({ ...DEFAULT_FILTERS });
     } catch (analysisError) {
       setError(analysisErrorMessage(analysisError));
     } finally {
@@ -235,6 +262,7 @@ function App() {
     setExtraction(DEMO_EXTRACTION);
     setRows(rowsWithIds(DEMO_EXTRACTION));
     setVerified(false);
+    setFilters({ ...DEFAULT_FILTERS });
     setError(null);
   };
 
@@ -250,6 +278,7 @@ function App() {
   };
 
   const addRow = () => {
+    clearFilters();
     setRows((current) => [
       ...current,
       {
@@ -295,7 +324,7 @@ function App() {
   };
 
   const handleExport = async () => {
-    if (!rows.length || !extraction || !verified) return;
+    if (!filteredRows.length || !extraction || !verified) return;
     setIsExporting(true);
     setError(null);
     try {
@@ -303,12 +332,9 @@ function App() {
       const date = new Date().toISOString().slice(0, 10);
       await downloadWorkbook(
         {
-          rows,
+          rows: filteredRows,
           mappings,
-          extraction,
-          sourceFileName: sourceImage?.file.name ?? "dane-demo",
           templateFile,
-          verified,
         },
         `labflow-wyniki-${date}.xlsx`,
       );
@@ -325,6 +351,7 @@ function App() {
     setRows([]);
     setTemplateFile(null);
     setVerified(false);
+    setFilters({ ...DEFAULT_FILTERS });
     setError(null);
   };
 
@@ -459,11 +486,31 @@ function App() {
                 </div>
               )}
 
+              <div className="filter-panel">
+                <div className="filter-panel__heading">
+                  <div><Filter size={18} /><span><strong>Filtruj wyniki</strong><small>Eksport obejmie tylko widoczne wiersze.</small></span></div>
+                  <span className="filter-count">Pokazano {filteredRows.length} z {rows.length}</span>
+                </div>
+                <div className="filter-grid">
+                  <label><span>Data od</span><input type="date" value={filters.dateFrom} onChange={(event) => updateFilter("dateFrom", event.target.value)} /></label>
+                  <label><span>Data do</span><input type="date" value={filters.dateTo} onChange={(event) => updateFilter("dateTo", event.target.value)} /></label>
+                  <label><span>Kolumna wartości</span><select value={filters.valueField} onChange={(event) => updateFilter("valueField", event.target.value as ValueFilterField)}>{VALUE_FILTER_FIELDS.map((field) => <option key={field} value={field}>{LAB_FIELD_LABELS[field]}</option>)}</select></label>
+                  <label><span>Wartość od</span><input inputMode="decimal" value={filters.valueMin} onChange={(event) => updateFilter("valueMin", event.target.value)} placeholder="np. 0,100" /></label>
+                  <label><span>Wartość do</span><input inputMode="decimal" value={filters.valueMax} onChange={(event) => updateFilter("valueMax", event.target.value)} placeholder="np. 0,500" /></label>
+                  <label className="filter-checkbox"><input type="checkbox" checked={filters.hideEmpty} onChange={(event) => updateFilter("hideEmpty", event.target.checked)} /><span>Ukryj puste wartości</span></label>
+                </div>
+                <button type="button" className="button button--ghost button--small" onClick={clearFilters} disabled={!hasActiveFilters}>Wyczyść filtry</button>
+              </div>
+
+              {filteredRows.length === 0 && (
+                <div className="alert alert--warning"><AlertTriangle size={19} /><span>Żaden wiersz nie spełnia ustawionych filtrów. Zmień zakres albo wyczyść filtry.</span></div>
+              )}
+
               <div className="table-wrap">
                 <table className="results-table">
                   <thead><tr><th>L.p</th><th>Data</th><th>Próbka ślepa</th><th>Próbka kontrolna c1</th><th>Próbka kontrolna c2</th><th>Próbka powtórzona (1)</th><th>Próbka powtórzona (2)</th><th>Rozstęp</th><th>Pewność</th><th aria-label="Akcje" /></tr></thead>
                   <tbody>
-                    {rows.map((row) => (
+                    {filteredRows.map((row) => (
                       <tr key={row.id} className={row.confidence < 0.85 ? "row--check" : ""}>
                         <td><input aria-label="L.p" value={row.sequenceNumber ?? ""} onChange={(event) => updateRow(row.id, "sequenceNumber", event.target.value || null)} /></td>
                         <td><input aria-label="Data" value={row.date ?? ""} onChange={(event) => updateRow(row.id, "date", event.target.value || null)} /></td>
@@ -522,9 +569,9 @@ function App() {
                 <label>
                   <input type="checkbox" checked={verified} onChange={(event) => setVerified(event.target.checked)} />
                   <span className="verification-card__check"><CheckCircle2 size={18} /></span>
-                  <span><strong>Sprawdziłem/-am wartości ze zdjęciem</strong><small>Eksport zostanie odblokowany po potwierdzeniu kontroli.</small></span>
+                  <span><strong>Sprawdziłem/-am {filteredRows.length} widocznych wierszy</strong><small>Eksport obejmie wyłącznie wyniki spełniające filtry.</small></span>
                 </label>
-                <button type="button" className="button button--primary button--export" onClick={handleExport} disabled={!verified || isExporting || !mappings.length}>
+                <button type="button" className="button button--primary button--export" onClick={handleExport} disabled={!verified || isExporting || !mappings.length || !filteredRows.length}>
                   {isExporting ? <LoaderCircle className="spin" size={19} /> : <Download size={19} />}
                   {isExporting ? "Tworzę plik…" : "Pobierz Excel"}
                 </button>

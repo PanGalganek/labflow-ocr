@@ -10,7 +10,8 @@ LabFlow to aplikacja webowa do przepisywania wyników laboratoryjnych ze zdjęć
 - edycja oraz kontrola pewności każdego wyniku przed eksportem,
 - eksport do nowego skoroszytu albo własnego szablonu `.xlsx`,
 - reguły kopiowania kolumn do dowolnych arkuszy i komórek,
-- osobny arkusz surowych danych i metadanych dla odtwarzalności.
+- filtrowanie wyników według daty oraz zakresu wartości przed eksportem,
+- osobny arkusz surowych danych zawierający tylko wybrane wyniki.
 
 ## Architektura i bezpieczeństwo
 

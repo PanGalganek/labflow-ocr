@@ -36,27 +36,20 @@ const rows: LabResultRow[] = [
 ];
 
 describe("Excel export", () => {
-  it("creates raw, metadata and mapped worksheets", async () => {
+  it("creates raw and mapped worksheets without metadata", async () => {
     const buffer = await createWorkbookBuffer({
       rows,
       mappings: DEFAULT_MAPPING_RULES,
-      extraction: {
-        documentType: "wydruk urządzenia",
-        sourceDevice: "miernik",
-        language: "pl",
-        warnings: [],
-      },
-      sourceFileName: "wyniki.jpg",
-      verified: true,
     });
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
 
-    expect(workbook.getWorksheet("Dane surowe")?.getCell("C2").value).toBe("0,000");
+    expect(workbook.getWorksheet("Dane surowe")?.getCell("B2").value).toBeInstanceOf(Date);
+    expect(workbook.getWorksheet("Dane surowe")?.getCell("C2").value).toBe(0);
     expect(workbook.getWorksheet("Do analizy")?.getCell("A2").value).toBe("1");
-    expect(workbook.getWorksheet("Do analizy")?.getCell("F3").value).toBe("0,344");
-    expect(workbook.getWorksheet("Do analizy")?.getCell("H3").value).toBe("0,005");
-    expect(workbook.getWorksheet("Metadane")?.getCell("B7").value).toBe(2);
+    expect(workbook.getWorksheet("Do analizy")?.getCell("F3").value).toBe(0.344);
+    expect(workbook.getWorksheet("Do analizy")?.getCell("H3").value).toBe(0.005);
+    expect(workbook.getWorksheet("Metadane")).toBeUndefined();
   });
 });

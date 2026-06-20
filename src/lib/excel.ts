@@ -1,6 +1,5 @@
 import ExcelJS from "exceljs";
 import type {
-  ExtractionResponse,
   LabField,
   LabResultRow,
   MappingRule,
@@ -8,17 +7,13 @@ import type {
 import { LAB_FIELD_LABELS } from "../types";
 
 const RAW_SHEET_NAME = "Dane surowe";
-const META_SHEET_NAME = "Metadane";
 const INVALID_SHEET_CHARS = /[\\/*?:[\]]/g;
 const CELL_REFERENCE = /^[A-Z]{1,3}[1-9][0-9]{0,6}$/i;
 
 export type WorkbookExportOptions = {
   rows: LabResultRow[];
   mappings: MappingRule[];
-  extraction: Pick<ExtractionResponse, "documentType" | "sourceDevice" | "language" | "warnings">;
-  sourceFileName: string;
   templateFile?: File | null;
-  verified: boolean;
 };
 
 function safeSheetName(value: string): string {
@@ -36,10 +31,34 @@ function getOrReplaceSheet(workbook: ExcelJS.Workbook, name: string): ExcelJS.Wo
   });
 }
 
-function normalizeCellValue(value: LabResultRow[LabField]): ExcelJS.CellValue {
+function parseDateCell(value: string): Date | null {
+  const isoMatch = value.trim().match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  const polishMatch = value.trim().match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/);
+  if (!isoMatch && !polishMatch) return null;
+  const yearText = isoMatch?.[1] ?? polishMatch?.[3] ?? "";
+  const year = Number(yearText.length === 2 ? `20${yearText}` : yearText);
+  const month = Number(isoMatch?.[2] ?? polishMatch?.[2]);
+  const day = Number(isoMatch?.[3] ?? polishMatch?.[1]);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeCellValue(value: LabResultRow[LabField], field: LabField): ExcelJS.CellValue {
   if (value === null || value === undefined) return "";
   if (typeof value === "number" || typeof value === "boolean") return value;
-  return String(value);
+  const text = String(value).trim();
+  if (field === "date") return parseDateCell(text) ?? text;
+  if (field !== "sequenceNumber" && /^-?\d+(?:[.,]\d+)?$/.test(text)) {
+    return Number(text.replace(",", "."));
+  }
+  return text;
+}
+
+function applyCellFormat(cell: ExcelJS.Cell, field: LabField): void {
+  if (field === "date" && cell.value instanceof Date) cell.numFmt = "yyyy-mm-dd";
+  if (field !== "sequenceNumber" && field !== "date" && typeof cell.value === "number") {
+    cell.numFmt = "0.############";
+  }
 }
 
 function styleHeaderRow(row: ExcelJS.Row): void {
@@ -69,61 +88,29 @@ function populateRawSheet(workbook: ExcelJS.Workbook, rows: LabResultRow[]): voi
     { header: LAB_FIELD_LABELS.repeatedSample1, key: "repeatedSample1", width: 25 },
     { header: LAB_FIELD_LABELS.repeatedSample2, key: "repeatedSample2", width: 25 },
     { header: LAB_FIELD_LABELS.range, key: "range", width: 16 },
-    { header: "Pewność", key: "confidence", width: 14 },
-    { header: "Uwagi", key: "notes", width: 34 },
-    { header: "Tekst źródłowy", key: "sourceText", width: 42 },
   ];
 
   rows.forEach((row) => {
-    sheet.addRow({
-      sequenceNumber: row.sequenceNumber ?? "",
-      date: row.date ?? "",
-      blankSample: row.blankSample ?? "",
-      controlSampleC1: row.controlSampleC1 ?? "",
-      controlSampleC2: row.controlSampleC2 ?? "",
-      repeatedSample1: row.repeatedSample1 ?? "",
-      repeatedSample2: row.repeatedSample2 ?? "",
-      range: row.range ?? "",
-      confidence: row.confidence,
-      notes: row.notes ?? "",
-      sourceText: row.sourceText ?? "",
+    const excelRow = sheet.addRow(
+      Object.fromEntries(
+        (Object.keys(LAB_FIELD_LABELS) as LabField[]).map((field) => [
+          field,
+          normalizeCellValue(row[field], field),
+        ]),
+      ),
+    );
+    (Object.keys(LAB_FIELD_LABELS) as LabField[]).forEach((field) => {
+      applyCellFormat(excelRow.getCell(field), field);
     });
   });
 
   styleHeaderRow(sheet.getRow(1));
-  sheet.getColumn("confidence").numFmt = "0%";
-  sheet.autoFilter = { from: "A1", to: "K1" };
+  sheet.autoFilter = { from: "A1", to: "H1" };
   sheet.eachRow((row, index) => {
     if (index > 1) {
       row.alignment = { vertical: "top", wrapText: true };
     }
   });
-}
-
-function populateMetadataSheet(
-  workbook: ExcelJS.Workbook,
-  options: WorkbookExportOptions,
-): void {
-  const sheet = getOrReplaceSheet(workbook, META_SHEET_NAME);
-  const metadata: Array<[string, string | number]> = [
-    ["Plik źródłowy", options.sourceFileName],
-    ["Data eksportu", new Date().toISOString()],
-    ["Typ dokumentu", options.extraction.documentType],
-    ["Urządzenie / źródło", options.extraction.sourceDevice ?? "Nie rozpoznano"],
-    ["Język", options.extraction.language],
-    ["Liczba wierszy", options.rows.length],
-    ["Status kontroli", options.verified ? "Zweryfikowano przez użytkownika" : "WYMAGA WERYFIKACJI"],
-    ["Ostrzeżenia", options.extraction.warnings.join(" | ") || "Brak"],
-    [
-      "Zasada",
-      "Odczyt AI jest transkrypcją pomocniczą i nie zastępuje procedur kontroli laboratoryjnej.",
-    ],
-  ];
-
-  sheet.addRows([["Pole", "Wartość"], ...metadata]);
-  sheet.columns = [{ width: 26 }, { width: 88 }];
-  styleHeaderRow(sheet.getRow(1));
-  sheet.getColumn(2).alignment = { vertical: "top", wrapText: true };
 }
 
 function applyMappingRule(
@@ -156,7 +143,8 @@ function applyMappingRule(
     const rowOffset = rule.direction === "down" ? index + offset : 0;
     const columnOffset = rule.direction === "right" ? index + offset : 0;
     const cell = sheet.getCell(origin.row + rowOffset, origin.col + columnOffset);
-    cell.value = normalizeCellValue(row[rule.sourceField]);
+    cell.value = normalizeCellValue(row[rule.sourceField], rule.sourceField);
+    applyCellFormat(cell, rule.sourceField);
   });
 }
 
@@ -175,7 +163,6 @@ export async function buildWorkbook(
   }
 
   populateRawSheet(workbook, options.rows);
-  populateMetadataSheet(workbook, options);
   options.mappings.forEach((rule) => applyMappingRule(workbook, options.rows, rule));
 
   return workbook;
