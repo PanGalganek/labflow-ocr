@@ -46,6 +46,7 @@ export type MappingRule = {
 };
 
 export type SourceImage = {
+  id: string;
   file: File;
   dataUrl: string;
   previewUrl: string;
@@ -62,11 +63,4 @@ export const LAB_FIELD_LABELS: Record<LabField, string> = {
   range: "Rozstęp",
 };
 
-export const DEFAULT_MAPPING_RULES: MappingRule[] = LAB_FIELDS.map((sourceField, index) => ({
-  id: `default-${sourceField}`,
-  sourceField,
-  targetSheet: "Do analizy",
-  startCell: `${String.fromCharCode(65 + index)}1`,
-  direction: "down",
-  includeHeader: true,
-}));
+export const DEFAULT_MAPPING_RULES: MappingRule[] = [];

@@ -101,12 +101,19 @@ kbd { border: 1px solid #cbd4d1; border-bottom-width: 2px; background: white; pa
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #e1e6e3; }
 .drop-zone__content > small { color: #98a5a3; margin-top: 14px; font-size: 11px; }
 .drop-zone--filled { padding: 0; border-style: solid; background: #e9efec; }
-.drop-zone--filled > img { width: 100%; height: 430px; object-fit: contain; display: block; }
+.image-preview-grid { width: 100%; height: 430px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 2px; position: relative; overflow: hidden; border-radius: 17px; }
+.image-preview-grid img { width: 100%; height: 100%; min-height: 0; object-fit: contain; display: block; background: #edf2ef; }
+.image-preview-more { position: absolute; top: 14px; right: 14px; min-width: 42px; height: 42px; border-radius: 999px; display: grid; place-items: center; background: var(--teal-dark); color: white; font-size: 13px; font-weight: 800; box-shadow: 0 5px 18px rgba(17,47,50,.25); }
 .image-overlay { position: absolute; left: 16px; right: 16px; bottom: 16px; background: rgba(255,253,250,.94); backdrop-filter: blur(12px); border-radius: 14px; display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; box-shadow: 0 8px 30px rgba(17,47,50,.16); }
-.image-overlay > div { display: flex; align-items: center; gap: 10px; color: #41866f; }
+.image-overlay__summary { display: flex; align-items: center; gap: 10px; color: #41866f; }
 .image-overlay strong, .image-overlay small { display: block; }
 .image-overlay strong { color: var(--ink); font-size: 13px; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .image-overlay small { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.image-overlay--multi { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; max-height: 230px; }
+.image-file-list { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 105px; overflow-y: auto; }
+.image-file-item { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 8px; background: #edf4f1; color: var(--ink); font-size: 10px; }
+.image-file-item > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.image-file-item > button { flex: 0 0 auto; display: grid; place-items: center; border: 0; background: transparent; color: #7b8e8b; cursor: pointer; }
 
 .capture-aside { display: flex; flex-direction: column; gap: 10px; }
 .aside-card { display: flex; gap: 13px; background: rgba(255,253,250,.75); border: 1px solid rgba(31,86,84,.1); border-radius: 17px; padding: 20px; color: #4d807c; }
@@ -165,6 +172,9 @@ kbd { border: 1px solid #cbd4d1; border-bottom-width: 2px; background: white; pa
 .file-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-chip button { display: grid; place-items: center; background: transparent; border: 0; color: #7d8a88; padding: 0; }
 .mapping-list { border: 1px solid #dfe6e3; border-radius: 14px; overflow: hidden; }
+.mapping-list__title { display: flex; align-items: baseline; gap: 9px; padding: 13px 14px; background: #f6faf8; border-bottom: 1px solid #dfe6e3; }
+.mapping-list__title strong { color: var(--ink); font-size: 12px; }
+.mapping-list__title span { color: var(--muted); font-size: 10px; }
 .mapping-list__head, .mapping-row { display: grid; grid-template-columns: 1.35fr 1.15fr .62fr .78fr .58fr 36px; gap: 8px; align-items: center; }
 .mapping-list__head { padding: 10px 13px; background: #f2f6f3; color: #687a78; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; font-weight: 700; }
 .mapping-row { padding: 8px 10px; border-top: 1px solid #edf0ee; }
@@ -228,7 +238,11 @@ footer { width: min(1180px, calc(100% - 40px)); margin: auto; border-top: 1px so
   .steps { gap: 8px; }
   .steps > svg, .step div { display: none; }
   .drop-zone, .drop-zone__content { min-height: 360px; }
-  .drop-zone--filled > img { height: 360px; }
+  .image-preview-grid { height: 400px; grid-template-columns: 1fr 1fr; }
+  .image-overlay--multi { grid-template-columns: 1fr; max-height: 260px; }
+  .image-overlay--multi > .button { width: 100%; justify-content: center; }
+  .image-file-list { grid-column: 1; grid-template-columns: 1fr; max-height: 95px; }
+  .mapping-list__title { display: grid; gap: 3px; }
   .capture-aside { display: flex; }
   .action-bar, .verification-card { flex-direction: column; align-items: stretch; gap: 14px; }
   .section-heading { flex-direction: column; gap: 12px; }

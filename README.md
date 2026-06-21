@@ -4,13 +4,15 @@ LabFlow to aplikacja webowa do przepisywania wyników laboratoryjnych ze zdjęć
 
 ## Funkcje
 
-- wklejanie obrazu ze schowka, przeciąganie pliku i wybór z dysku,
+- jednoczesne dodawanie do 10 zdjęć ze schowka, przez przeciąganie lub wybór z dysku,
 - odczyt tabel, wydruków urządzeń i kart wyników przez Gemini,
 - logowanie e-mailem i hasłem przez Firebase Authentication,
 - edycja oraz kontrola pewności każdego wyniku przed eksportem,
 - eksport do nowego skoroszytu albo własnego szablonu `.xlsx`,
-- reguły kopiowania kolumn do dowolnych arkuszy i komórek,
-- osobny arkusz surowych danych i metadanych dla odtwarzalności.
+- pierwszy arkusz z dokładnym surowym odczytem tekstowym,
+- drugi arkusz z datami i liczbami zapisanymi w odpowiednich typach,
+- działające filtry oparte na tabelach Excela w obu arkuszach,
+- opcjonalne reguły kopiowania kolumn do kolejnych arkuszy i komórek.
 
 ## Architektura i bezpieczeństwo
 

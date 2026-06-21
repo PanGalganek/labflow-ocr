@@ -29,6 +29,7 @@ import {
   useState,
 } from "react";
 import { extractLabResults } from "./lib/gemini";
+import { mergeExtractions } from "./lib/extraction";
 import {
   DEFAULT_MAPPING_RULES,
   LAB_FIELDS,
@@ -41,8 +42,9 @@ import {
 } from "./types";
 
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
+const MAX_IMAGE_COUNT = 10;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const MAPPING_STORAGE_KEY = "labflow:mapping-rules:v2";
+const MAPPING_STORAGE_KEY = "labflow:mapping-rules:v3";
 
 const DEMO_EXTRACTION: ExtractionResponse = {
   documentType: "Karta powtarzalności metody",
@@ -143,13 +145,14 @@ function analysisErrorMessage(error: unknown): string {
 function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const templateRef = useRef<HTMLInputElement>(null);
-  const [sourceImage, setSourceImage] = useState<SourceImage | null>(null);
+  const [sourceImages, setSourceImages] = useState<SourceImage[]>([]);
   const [extraction, setExtraction] = useState<ExtractionResponse | null>(null);
   const [rows, setRows] = useState<LabResultRow[]>([]);
   const [mappings, setMappings] = useState<MappingRule[]>(loadStoredMappings);
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,27 +161,39 @@ function App() {
     localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(mappings));
   }, [mappings]);
 
-  const acceptFile = useCallback(async (file: File) => {
+  const acceptFiles = useCallback(async (files: File[]) => {
     setError(null);
-    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
-      setError("Wybierz obraz JPEG, PNG, WEBP lub GIF.");
+    if (!files.length) return;
+    if (sourceImages.length + files.length > MAX_IMAGE_COUNT) {
+      setError(`Możesz dodać maksymalnie ${MAX_IMAGE_COUNT} zdjęć do jednego odczytu.`);
       return;
     }
-    if (file.size > MAX_FILE_BYTES) {
-      setError("Plik przekracza limit 12 MB.");
-      return;
+    for (const file of files) {
+      if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+        setError(`${file.name}: wybierz obraz JPEG, PNG, WEBP lub GIF.`);
+        return;
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        setError(`${file.name}: plik przekracza limit 12 MB.`);
+        return;
+      }
     }
 
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setSourceImage({ file, dataUrl, previewUrl: dataUrl });
+      const images = await Promise.all(
+        files.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          return { id: makeId("image"), file, dataUrl, previewUrl: dataUrl } satisfies SourceImage;
+        }),
+      );
+      setSourceImages((current) => [...current, ...images]);
       setExtraction(null);
       setRows([]);
       setVerified(false);
     } catch (fileError) {
       setError(fileError instanceof Error ? fileError.message : "Nie udało się odczytać pliku.");
     }
-  }, []);
+  }, [sourceImages.length]);
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
@@ -190,12 +205,12 @@ function App() {
       const file = imageItem?.getAsFile();
       if (file) {
         event.preventDefault();
-        void acceptFile(file);
+        void acceptFiles([file]);
       }
     };
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [acceptFile]);
+  }, [acceptFiles]);
 
   const lowConfidenceCount = useMemo(
     () => rows.filter((row) => row.confidence < 0.85).length,
@@ -205,22 +220,44 @@ function App() {
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDragging(false);
-    const file = event.dataTransfer.files.item(0);
-    if (file) void acceptFile(file);
+    void acceptFiles(Array.from(event.dataTransfer.files));
   };
 
   const handleImageInput = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.item(0);
-    if (file) void acceptFile(file);
+    void acceptFiles(Array.from(event.target.files ?? []));
     event.target.value = "";
   };
 
+  const removeSourceImage = (id: string) => {
+    setSourceImages((current) => current.filter((image) => image.id !== id));
+    setExtraction(null);
+    setRows([]);
+    setVerified(false);
+  };
+
   const handleAnalyze = async () => {
-    if (!sourceImage) return;
+    if (!sourceImages.length) return;
     setIsAnalyzing(true);
+    setAnalysisProgress(0);
     setError(null);
     try {
-      const response = await extractLabResults(sourceImage.dataUrl, sourceImage.file.name);
+      const results: Array<{ image: SourceImage; response: ExtractionResponse }> = [];
+      for (let index = 0; index < sourceImages.length; index += 1) {
+        const image = sourceImages[index];
+        setAnalysisProgress(index + 1);
+        try {
+          const response = await extractLabResults(image.dataUrl, image.file.name);
+          results.push({ image, response });
+        } catch (analysisError) {
+          throw new Error(`${image.file.name}: ${analysisErrorMessage(analysisError)}`);
+        }
+      }
+      const response = mergeExtractions(
+        results.map(({ image, response: itemResponse }) => ({
+          fileName: image.file.name,
+          response: itemResponse,
+        })),
+      );
       setExtraction(response);
       setRows(rowsWithIds(response));
       setVerified(false);
@@ -228,6 +265,7 @@ function App() {
       setError(analysisErrorMessage(analysisError));
     } finally {
       setIsAnalyzing(false);
+      setAnalysisProgress(0);
     }
   };
 
@@ -276,7 +314,7 @@ function App() {
       {
         id: makeId("mapping"),
         sourceField: "sequenceNumber",
-        targetSheet: "Do analizy",
+        targetSheet: "Dodatkowy arkusz",
         startCell: "A1",
         direction: "down",
         includeHeader: true,
@@ -305,10 +343,7 @@ function App() {
         {
           rows,
           mappings,
-          extraction,
-          sourceFileName: sourceImage?.file.name ?? "dane-demo",
           templateFile,
-          verified,
         },
         `labflow-wyniki-${date}.xlsx`,
       );
@@ -320,7 +355,7 @@ function App() {
   };
 
   const reset = () => {
-    setSourceImage(null);
+    setSourceImages([]);
     setExtraction(null);
     setRows([]);
     setTemplateFile(null);
@@ -349,14 +384,14 @@ function App() {
           <div className="hero__eyebrow"><Sparkles size={15} /> Asystent transkrypcji laboratoryjnej</div>
           <h1>Z kartki i urządzenia<br />prosto do <em>Excela.</em></h1>
           <p>
-            Wklej zdjęcie wyników, sprawdź odczytane wartości i zapisz je dokładnie
+            Wklej jedno lub kilka zdjęć wyników, sprawdź odczytane wartości i zapisz je dokładnie
             w wybranych arkuszach oraz komórkach.
           </p>
         </section>
 
         <nav className="steps" aria-label="Etapy pracy">
-          <div className={`step ${sourceImage || rows.length ? "step--done" : "step--active"}`}>
-            <span>1</span><div><strong>Dodaj zdjęcie</strong><small>Schowek lub plik</small></div>
+          <div className={`step ${sourceImages.length || rows.length ? "step--done" : "step--active"}`}>
+            <span>1</span><div><strong>Dodaj zdjęcia</strong><small>Do 10 plików</small></div>
           </div>
           <ChevronRight size={18} />
           <div className={`step ${rows.length ? "step--active" : ""}`}>
@@ -379,33 +414,41 @@ function App() {
         {!rows.length && (
           <section className="capture-grid">
             <div
-              className={`drop-zone ${isDragging ? "drop-zone--dragging" : ""} ${sourceImage ? "drop-zone--filled" : ""}`}
+              className={`drop-zone ${isDragging ? "drop-zone--dragging" : ""} ${sourceImages.length ? "drop-zone--filled" : ""}`}
               onDragEnter={(event) => { event.preventDefault(); setIsDragging(true); }}
               onDragOver={(event) => event.preventDefault()}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
             >
-              {sourceImage ? (
+              {sourceImages.length ? (
                 <>
-                  <img src={sourceImage.previewUrl} alt="Podgląd dodanego dokumentu" />
-                  <div className="image-overlay">
-                    <div><CheckCircle2 size={20} /><span><strong>{sourceImage.file.name}</strong><small>{(sourceImage.file.size / 1024 / 1024).toFixed(2)} MB</small></span></div>
-                    <button type="button" className="icon-button" onClick={() => setSourceImage(null)} aria-label="Usuń obraz"><Trash2 size={18} /></button>
+                  <div className="image-preview-grid">
+                    {sourceImages.slice(0, 4).map((image) => <img key={image.id} src={image.previewUrl} alt={`Podgląd ${image.file.name}`} />)}
+                    {sourceImages.length > 4 && <span className="image-preview-more">+{sourceImages.length - 4}</span>}
+                  </div>
+                  <div className="image-overlay image-overlay--multi">
+                    <div className="image-overlay__summary"><CheckCircle2 size={20} /><span><strong>{sourceImages.length} {sourceImages.length === 1 ? "zdjęcie" : sourceImages.length < 5 ? "zdjęcia" : "zdjęć"}</strong><small>{(sourceImages.reduce((sum, image) => sum + image.file.size, 0) / 1024 / 1024).toFixed(2)} MB łącznie</small></span></div>
+                    <button type="button" className="button button--secondary button--small" onClick={() => inputRef.current?.click()}><Plus size={15} /> Dodaj kolejne</button>
+                    <div className="image-file-list">
+                      {sourceImages.map((image) => (
+                        <div className="image-file-item" key={image.id}><span title={image.file.name}>{image.file.name}</span><button type="button" onClick={() => removeSourceImage(image.id)} aria-label={`Usuń ${image.file.name}`}><X size={14} /></button></div>
+                      ))}
+                    </div>
                   </div>
                 </>
               ) : (
                 <div className="drop-zone__content">
                   <div className="drop-zone__icon"><ImagePlus size={34} /></div>
-                  <h2>Wklej lub upuść zdjęcie</h2>
-                  <p>Naciśnij <kbd>Ctrl</kbd> + <kbd>V</kbd> albo przeciągnij plik tutaj</p>
+                  <h2>Wklej lub upuść zdjęcia</h2>
+                  <p>Naciśnij <kbd>Ctrl</kbd> + <kbd>V</kbd> albo przeciągnij kilka plików tutaj</p>
                   <div className="divider"><span>lub</span></div>
                   <button type="button" className="button button--secondary" onClick={() => inputRef.current?.click()}>
-                    <UploadCloud size={18} /> Wybierz z komputera
+                    <UploadCloud size={18} /> Wybierz zdjęcia
                   </button>
-                  <small>JPEG, PNG, WEBP lub GIF · maks. 12 MB</small>
+                  <small>Do {MAX_IMAGE_COUNT} zdjęć · maks. 12 MB każde</small>
                 </div>
               )}
-              <input ref={inputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageInput} />
+              <input ref={inputRef} className="visually-hidden" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageInput} />
             </div>
 
             <aside className="capture-aside">
@@ -419,19 +462,19 @@ function App() {
               </div>
               <div className="aside-card">
                 <FileSpreadsheet size={23} />
-                <div><strong>Twój układ Excela</strong><p>Wybierasz arkusz, komórkę startową i kolumnę do skopiowania.</p></div>
+                <div><strong>Dwa gotowe arkusze</strong><p>Surowy odczyt oraz dane dopasowane do typów dat i liczb, oba z filtrami.</p></div>
               </div>
               <button type="button" className="demo-link" onClick={loadDemo}>Zobacz przykładowy odczyt <ChevronRight size={15} /></button>
             </aside>
           </section>
         )}
 
-        {sourceImage && !rows.length && (
+        {sourceImages.length > 0 && !rows.length && (
           <div className="action-bar">
-            <div><Sparkles size={21} /><span><strong>Obraz gotowy do analizy</strong><small>AI odczyta tabelę, jednostki i oznaczenia.</small></span></div>
+            <div><Sparkles size={21} /><span><strong>{sourceImages.length === 1 ? "Obraz gotowy" : `${sourceImages.length} obrazów gotowych`} do analizy</strong><small>Każde zdjęcie zostanie odczytane osobno, a wyniki połączone.</small></span></div>
             <button type="button" className="button button--primary" onClick={handleAnalyze} disabled={isAnalyzing}>
               {isAnalyzing ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={18} />}
-              {isAnalyzing ? "Odczytuję…" : "Odczytaj wyniki"}
+              {isAnalyzing ? `Odczytuję ${analysisProgress}/${sourceImages.length}…` : "Odczytaj wyniki"}
             </button>
           </div>
         )}
@@ -487,8 +530,8 @@ function App() {
               <div className="section-heading">
                 <div>
                   <span className="section-kicker"><Settings2 size={16} /> Krok 3</span>
-                  <h2>Ustaw zapis do Excela</h2>
-                  <p>Każda reguła kopiuje jedną kolumnę do wskazanego miejsca.</p>
+                  <h2>Eksport do Excela</h2>
+                  <p>Arkusze „Dane surowe” i „Dane dopasowane” powstaną automatycznie z działającymi filtrami.</p>
                 </div>
               </div>
 
@@ -504,7 +547,8 @@ function App() {
               </div>
 
               <div className="mapping-list">
-                <div className="mapping-list__head"><span>Kolumna źródłowa</span><span>Arkusz docelowy</span><span>Od komórki</span><span>Kierunek</span><span>Nagłówek</span><span /></div>
+                <div className="mapping-list__title"><strong>Dodatkowe kopiowanie</strong><span>Opcjonalnie skopiuj wybraną kolumnę do kolejnego arkusza lub szablonu.</span></div>
+                {mappings.length > 0 && <div className="mapping-list__head"><span>Kolumna źródłowa</span><span>Arkusz docelowy</span><span>Od komórki</span><span>Kierunek</span><span>Nagłówek</span><span /></div>}
                 {mappings.map((rule) => (
                   <div className="mapping-row" key={rule.id}>
                     <label><span>Kolumna</span><select value={rule.sourceField} onChange={(event) => updateMapping(rule.id, "sourceField", event.target.value as LabField)}>{LAB_FIELDS.map((field) => <option key={field} value={field}>{LAB_FIELD_LABELS[field]}</option>)}</select></label>
@@ -515,7 +559,7 @@ function App() {
                     <button type="button" className="icon-button icon-button--quiet" onClick={() => setMappings((current) => current.filter((item) => item.id !== rule.id))} aria-label="Usuń regułę"><Trash2 size={16} /></button>
                   </div>
                 ))}
-                <button type="button" className="add-row" onClick={addMapping}><Plus size={16} /> Dodaj regułę kopiowania</button>
+                <button type="button" className="add-row" onClick={addMapping}><Plus size={16} /> Dodaj opcjonalną regułę</button>
               </div>
 
               <div className="verification-card">
@@ -524,7 +568,7 @@ function App() {
                   <span className="verification-card__check"><CheckCircle2 size={18} /></span>
                   <span><strong>Sprawdziłem/-am wartości ze zdjęciem</strong><small>Eksport zostanie odblokowany po potwierdzeniu kontroli.</small></span>
                 </label>
-                <button type="button" className="button button--primary button--export" onClick={handleExport} disabled={!verified || isExporting || !mappings.length}>
+                <button type="button" className="button button--primary button--export" onClick={handleExport} disabled={!verified || isExporting}>
                   {isExporting ? <LoaderCircle className="spin" size={19} /> : <Download size={19} />}
                   {isExporting ? "Tworzę plik…" : "Pobierz Excel"}
                 </button>
